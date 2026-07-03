@@ -216,6 +216,7 @@
       </div>
       <button class="btn" id="submitReq">Отправить пожелание</button>
       <div class="msg" id="submitMsg"></div>
+      <div class="footer-note">Максимум 14 дней за одну заявку · не более 21 дня отпуска в год на человека</div>
     </div>
   </div>
 
@@ -266,7 +267,7 @@
       <div class="card">
         <h2>Все заявки</h2>
         <table>
-          <thead><tr><th>ФИО</th><th>Отдел</th><th>С</th><th>По</th><th>Дней</th><th>Комментарий</th><th></th></tr></thead>
+          <thead><tr><th>ФИО</th><th>Отдел</th><th>С</th><th>По</th><th>Дней</th><th>Комментарий</th><th>Статус</th><th></th></tr></thead>
           <tbody id="mgrTable"></tbody>
         </table>
         <div style="margin-top:14px;"><button class="btn ghost" id="clearAll">Очистить все данные</button></div>
@@ -296,15 +297,29 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':
 async function loadData(){
   const { data: rows, error } = await sb.from('requests').select('*').order('start_date');
   if(error){ console.error(error); data = []; return; }
-  data = rows.map(r => ({ id:r.id, name:r.name, dept:r.dept, start:r.start_date, end:r.end_date, note:r.note }));
+  data = rows.map(r => ({ id:r.id, name:r.name, dept:r.dept, start:r.start_date, end:r.end_date, note:r.note, status:r.status||'pending' }));
 }
 async function insertRequest(req){
-  const { error } = await sb.from('requests').insert([{ id:req.id, name:req.name, dept:req.dept, start_date:req.start, end_date:req.end, note:req.note }]);
+  const { error } = await sb.from('requests').insert([{ id:req.id, name:req.name, dept:req.dept, start_date:req.start, end_date:req.end, note:req.note, status:'pending' }]);
   if(error) console.error(error);
 }
 async function deleteRequest(id){
   const { error } = await sb.from('requests').delete().eq('id', id);
   if(error) console.error(error);
+}
+async function setStatus(id, status){
+  const { error } = await sb.from('requests').update({ status }).eq('id', id);
+  if(error) console.error(error);
+}
+
+function statusBadge(status){
+  const map = {
+    pending:  {label:'Ожидает',    color:'var(--amber)'},
+    approved: {label:'Подтверждено', color:'var(--teal)'},
+    rejected: {label:'Отклонено',  color:'var(--red)'}
+  };
+  const s = map[status] || map.pending;
+  return `<span style="font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:${s.color}; border:1px solid ${s.color}; border-radius:5px; padding:2px 7px;">${s.label}</span>`;
 }
 
 function overlapsDate(req, dateObj){ const s=parse(req.start), e=parse(req.end); return dateObj>=s && dateObj<=e; }
@@ -319,6 +334,7 @@ function renderTeamList(){
     <div class="req-item">
       <div class="who">${escapeHtml(r.name)}</div>
       <div class="dates">${r.start} → ${r.end} (${daysBetween(r.start,r.end)} дн.)</div>
+      ${statusBadge(r.status)}
     </div>
   `).join('');
 }
@@ -387,13 +403,22 @@ function renderMonthBars(){
 }
 function renderTable(){
   const body = document.getElementById('mgrTable');
-  if(!data.length){ body.innerHTML = '<tr><td colspan="7" style="color:var(--ink-soft)">Пока нет заявок</td></tr>'; return; }
+  if(!data.length){ body.innerHTML = '<tr><td colspan="8" style="color:var(--ink-soft)">Пока нет заявок</td></tr>'; return; }
   const sorted = [...data].sort((a,b)=>a.start.localeCompare(b.start));
   body.innerHTML = sorted.map(r=>`
     <tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.dept||'—')}</td><td>${r.start}</td><td>${r.end}</td><td>${daysBetween(r.start,r.end)}</td><td>${escapeHtml(r.note||'')}</td>
-    <td><button data-id="${r.id}" class="delBtn2" style="background:none;border:none;color:var(--red);cursor:pointer;">Удалить</button></td></tr>`).join('');
+    <td>${statusBadge(r.status)}</td>
+    <td style="white-space:nowrap;">
+      <button data-id="${r.id}" data-status="approved" class="statusBtn" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;margin-right:8px;">Подтвердить</button>
+      <button data-id="${r.id}" data-status="rejected" class="statusBtn" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-weight:600;margin-right:8px;">Отклонить</button>
+      <button data-id="${r.id}" class="delBtn2" style="background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:12px;">Удалить</button>
+    </td></tr>`).join('');
   body.querySelectorAll('.delBtn2').forEach(b=>b.addEventListener('click', async(e)=>{
     await deleteRequest(e.target.getAttribute('data-id'));
+    await refresh();
+  }));
+  body.querySelectorAll('.statusBtn').forEach(b=>b.addEventListener('click', async(e)=>{
+    await setStatus(e.target.getAttribute('data-id'), e.target.getAttribute('data-status'));
     await refresh();
   }));
 }
@@ -441,6 +466,25 @@ document.getElementById('submitReq').addEventListener('click', async ()=>{
   const msg = document.getElementById('submitMsg');
   if(!name || !start || !end){ msg.style.color='var(--red)'; msg.textContent='Заполните ФИО и обе даты.'; return; }
   if(parse(end) < parse(start)){ msg.style.color='var(--red)'; msg.textContent='Дата окончания раньше даты начала.'; return; }
+
+  const requestedDays = daysBetween(start, end);
+  if(requestedDays > 14){
+    msg.style.color='var(--red)';
+    msg.textContent = `Нельзя запросить больше 14 дней подряд за одну заявку (сейчас ${requestedDays}).`;
+    return;
+  }
+
+  await loadData(); // подтягиваем актуальные данные перед проверкой годового лимита
+  const year = parse(start).getFullYear();
+  const alreadyUsed = data
+    .filter(r => r.name === name && r.status !== 'rejected' && parse(r.start).getFullYear() === year)
+    .reduce((sum, r) => sum + daysBetween(r.start, r.end), 0);
+  if(alreadyUsed + requestedDays > 21){
+    msg.style.color='var(--red)';
+    msg.textContent = `Превышен годовой лимит: за ${year} год уже запланировано ${alreadyUsed} дн., лимит — 21 день в год.`;
+    return;
+  }
+
   await insertRequest({ id:uid(), name, dept, start, end, note });
   msg.style.color='var(--teal)'; msg.textContent='Пожелание отправлено!';
   document.getElementById('fName').value=''; document.getElementById('fDept').value='';
