@@ -277,10 +277,10 @@
 </div>
 
 <script>
-/* ====== НАСТРОЙКИ — ЗАПОЛНИТЕ ПЕРЕД ДЕПЛОЕМ ====== */
+/* ====== НАСТРОЙКИ ====== */
 const SUPABASE_URL = 'https://zlfradaoaqibwmlxdkex.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_GqH6AY9VW2oCVW7vBJKOkA_0krHsgmK';
-const MANAGER_PASSWORD = 'KALHFVNP1njQ';         // простой пароль для вкладки руководителя
+const SUPABASE_ANON_KEY = 'sb_publishable_GqH6AY9VW2oCVW7vBJKOkA_0krHsgmK'; // публичный ключ — можно хранить в коде, он только читает/добавляет
+/* Пароль руководителя больше НЕ хранится в коде — он живёт только на сервере (переменные окружения Vercel) */
 /* ================================================= */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -288,11 +288,22 @@ let data = [];
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let selectedDate = null;
+let mgrPassword = null; // хранится только в памяти вкладки после успешного входа
 
 function uid(){ return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function parse(d){ const [y,m,day]=d.split('-').map(Number); return new Date(y,m-1,day); }
 function daysBetween(a,b){ return Math.round((parse(b)-parse(a))/86400000)+1; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function callAdmin(payload){
+  const resp = await fetch('/api/admin', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ password: mgrPassword, ...payload })
+  });
+  const json = await resp.json().catch(()=>({}));
+  return { ok: resp.ok, ...json };
+}
 
 async function loadData(){
   const { data: rows, error } = await sb.from('requests').select('*').order('start_date');
@@ -304,12 +315,12 @@ async function insertRequest(req){
   if(error) console.error(error);
 }
 async function deleteRequest(id){
-  const { error } = await sb.from('requests').delete().eq('id', id);
-  if(error) console.error(error);
+  const res = await callAdmin({ action:'delete', id });
+  if(!res.ok) console.error(res.error);
 }
 async function setStatus(id, status){
-  const { error } = await sb.from('requests').update({ status }).eq('id', id);
-  if(error) console.error(error);
+  const res = await callAdmin({ action:'setStatus', id, status });
+  if(!res.ok) console.error(res.error);
 }
 
 function statusBadge(status){
@@ -447,11 +458,17 @@ document.getElementById('btnMgr').addEventListener('click', ()=>showTab('mgr'));
 
 document.getElementById('mgrEnter').addEventListener('click', async ()=>{
   const val = document.getElementById('mgrPwd').value;
-  if(val === MANAGER_PASSWORD){
+  const btn = document.getElementById('mgrEnter');
+  btn.disabled = true; btn.textContent = 'Проверяю…';
+  mgrPassword = val;
+  const res = await callAdmin({ action:'verify' });
+  btn.disabled = false; btn.textContent = 'Войти';
+  if(res.ok){
     document.getElementById('mgrGate').style.display='none';
     document.getElementById('mgrContent').style.display='block';
     await refresh();
   } else {
+    mgrPassword = null;
     document.getElementById('mgrMsg').style.color='var(--red)';
     document.getElementById('mgrMsg').textContent='Неверный пароль.';
   }
