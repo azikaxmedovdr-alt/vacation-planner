@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Планировщик отпусков</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#FAFAF7;
+    --surface:#FFFFFF;
+    --ink:#20303A;
+    --ink-soft:#5C6B73;
+    --line:#E2E5E1;
+    --teal:#3E7C7B;
+    --teal-light:#DCEAE9;
+    --amber:#E2984B;
+    --amber-light:#FBEAD6;
+    --red:#C1512D;
+    --red-light:#F6DCD2;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px; margin:0 auto; padding:28px 20px 60px;}
+  header{display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:12px;}
+  h1{font-size:22px; font-weight:700; letter-spacing:-0.01em; margin:0;}
+  .sub{color:var(--ink-soft); font-size:13px; margin-top:4px;}
+  .role-switch{display:flex; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:3px; flex-wrap:wrap;}
+  .role-switch button{border:none; background:transparent; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink-soft); border-radius:8px; cursor:pointer; font-family:var(--sans);}
+  .role-switch button.active{background:var(--ink); color:#fff;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:18px;}
+  .card h2{font-size:15px; margin:0 0 14px; font-weight:700;}
+  label{display:block; font-size:12px; color:var(--ink-soft); margin-bottom:5px; font-weight:600;}
+  input[type=text], input[type=date], input[type=number]{width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:var(--sans); background:#fff; color:var(--ink);}
+  .row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
+  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:14px;}
+  @media(max-width:640px){.row,.row3{grid-template-columns:1fr;}}
+  .btn{background:var(--ink); color:#fff; border:none; padding:10px 18px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--sans);}
+  .btn:hover{opacity:0.9;}
+  .btn.ghost{background:transparent; color:var(--ink-soft); border:1px solid var(--line);}
+  .msg{font-size:13px; margin-top:10px; color:var(--teal);}
+  .req-list{margin-top:16px; display:flex; flex-direction:column; gap:8px;}
+  .req-item{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:13px; background:var(--bg);}
+  .req-item .who{font-weight:700;}
+  .req-item .dates{font-family:var(--mono); color:var(--ink-soft); font-size:12.5px;}
+  .req-item button{background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; font-weight:600;}
+  .cal-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .cal-nav .month-label{font-weight:700; font-size:15px; font-family:var(--mono);}
+  .cal-nav button{background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:13px;}
+  .grid7{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
+  .dow{font-size:11px; text-align:center; color:var(--ink-soft); font-weight:700; padding-bottom:4px;}
+  .day{aspect-ratio:1/1; border-radius:8px; border:1px solid var(--line); background:var(--bg); padding:6px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; transition:transform .08s;}
+  .day:hover{transform:translateY(-1px);}
+  .day.empty{visibility:hidden;}
+  .day .num{font-family:var(--mono); font-size:12px; color:var(--ink-soft); font-weight:600;}
+  .day .bar{height:5px; border-radius:3px; background:var(--line); margin-top:4px;}
+  .day .count{font-family:var(--mono); font-size:11px; font-weight:700; align-self:flex-end;}
+  .day.selected{outline:2px solid var(--ink);}
+  .legend{display:flex; gap:14px; font-size:11.5px; color:var(--ink-soft); margin-top:12px; flex-wrap:wrap;}
+  .legend .dot{width:9px; height:9px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:middle;}
+  .detail-panel{margin-top:14px; padding:12px 14px; background:var(--bg); border-radius:10px; font-size:13px; min-height:20px;}
+  .stat-row{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px;}
+  .stat{flex:1; min-width:140px; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px 14px;}
+  .stat .num{font-family:var(--mono); font-size:22px; font-weight:700;}
+  .stat .lbl{font-size:11.5px; color:var(--ink-soft); margin-top:2px;}
+  .month-bars{display:flex; align-items:flex-end; gap:6px; height:90px; margin-top:6px;}
+  .month-bars .mb{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px;}
+  .month-bars .fill{width:100%; border-radius:4px 4px 0 0; background:var(--teal);}
+  .month-bars .mlbl{font-size:10px; color:var(--ink-soft); font-family:var(--mono);}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; font-size:11px; color:var(--ink-soft); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--line);}
+  td{padding:8px 8px; border-bottom:1px solid var(--line);}
+  .warn{color:var(--red); font-weight:600;}
+  .footer-note{font-size:11.5px; color:var(--ink-soft); margin-top:6px;}
+  .empty-state{color:var(--ink-soft); font-size:13px; padding:16px 0; text-align:center;}
+  .pwd-gate{max-width:320px; margin:60px auto; text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Планировщик отпусков</h1>
+      <div class="sub">Сотрудники оставляют пожелания — команда видит, кто и когда уходит</div>
+    </div>
+    <div class="role-switch">
+      <button id="btnForm" class="active">Подать заявку</button>
+      <button id="btnTeam">Календарь команды</button>
+      <button id="btnMgr">Руководитель</button>
+    </div>
+  </header>
+
+  <!-- ФОРМА -->
+  <div id="viewForm">
+    <div class="card">
+      <h2>Оставить пожелание по отпуску</h2>
+      <div class="row3">
+        <div><label>ФИО</label><input type="text" id="fName" placeholder="Иванова Анна"></div>
+        <div><label>Отдел / команда</label><input type="text" id="fDept" placeholder="Продажи"></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>Дата начала</label><input type="date" id="fStart"></div>
+        <div><label>Дата окончания</label><input type="date" id="fEnd"></div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label>Комментарий (необязательно, видит только руководитель)</label>
+        <input type="text" id="fNote" placeholder="Например: жёстко привязано к отпуску в школе у ребёнка">
+      </div>
+      <button class="btn" id="submitReq">Отправить пожелание</button>
+      <div class="msg" id="submitMsg"></div>
+    </div>
+  </div>
+
+  <!-- КОМАНДНЫЙ (ПУБЛИЧНЫЙ) КАЛЕНДАРЬ: только имя + даты -->
+  <div id="viewTeam" style="display:none;">
+    <div class="card">
+      <h2>Кто и когда уходит в отпуск</h2>
+      <div id="teamList" class="req-list"><div class="empty-state">Загрузка…</div></div>
+      <div class="footer-note">Показаны только имя и даты. Отдел и комментарии видит только руководитель.</div>
+    </div>
+  </div>
+
+  <!-- РУКОВОДИТЕЛЬ -->
+  <div id="viewMgr" style="display:none;">
+    <div id="mgrGate" class="pwd-gate">
+      <label>Пароль руководителя</label>
+      <input type="text" id="mgrPwd" placeholder="Введите пароль">
+      <div style="margin-top:10px;"><button class="btn" id="mgrEnter">Войти</button></div>
+      <div class="msg" id="mgrMsg"></div>
+    </div>
+    <div id="mgrContent" style="display:none;">
+      <div class="card">
+        <div class="stat-row" id="statRow"></div>
+        <label style="max-width:260px;">Численность команды (для расчёта % загрузки)</label>
+        <input type="number" id="headcount" value="50" style="max-width:120px;">
+      </div>
+      <div class="card">
+        <h2>Календарь загрузки</h2>
+        <div class="cal-nav">
+          <button id="prevMonth">&larr;</button>
+          <div class="month-label" id="monthLabel"></div>
+          <button id="nextMonth">&rarr;</button>
+        </div>
+        <div class="grid7" id="dowRow"></div>
+        <div class="grid7" id="calGrid" style="margin-top:6px;"></div>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--line)"></span>никто</span>
+          <span><span class="dot" style="background:var(--teal-light)"></span>1–2 чел.</span>
+          <span><span class="dot" style="background:var(--amber-light)"></span>несколько</span>
+          <span><span class="dot" style="background:var(--red-light)"></span>много (риск нехватки людей)</span>
+        </div>
+        <div class="detail-panel" id="dayDetail">Нажмите на день, чтобы увидеть, кто хочет в отпуск.</div>
+      </div>
+      <div class="card">
+        <h2>Загрузка по месяцам</h2>
+        <div class="month-bars" id="monthBars"></div>
+      </div>
+      <div class="card">
+        <h2>Все заявки</h2>
+        <table>
+          <thead><tr><th>ФИО</th><th>Отдел</th><th>С</th><th>По</th><th>Дней</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody id="mgrTable"></tbody>
+        </table>
+        <div style="margin-top:14px;"><button class="btn ghost" id="clearAll">Очистить все данные</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== НАСТРОЙКИ — ЗАПОЛНИТЕ ПЕРЕД ДЕПЛОЕМ ====== */
+const SUPABASE_URL = 'https://zlfradaoaqibwmlxdkex.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_GqH6AY9VW2oCVW7vBJKOkA_0krHsgmK';
+const MANAGER_PASSWORD = 'KALHFVNP1njQ';         // простой пароль для вкладки руководителя
+/* ================================================= */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let data = [];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let selectedDate = null;
+
+function uid(){ return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function parse(d){ const [y,m,day]=d.split('-').map(Number); return new Date(y,m-1,day); }
+function daysBetween(a,b){ return Math.round((parse(b)-parse(a))/86400000)+1; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadData(){
+  const { data: rows, error } = await sb.from('requests').select('*').order('start_date');
+  if(error){ console.error(error); data = []; return; }
+  data = rows.map(r => ({ id:r.id, name:r.name, dept:r.dept, start:r.start_date, end:r.end_date, note:r.note }));
+}
+async function insertRequest(req){
+  const { error } = await sb.from('requests').insert([{ id:req.id, name:req.name, dept:req.dept, start_date:req.start, end_date:req.end, note:req.note }]);
+  if(error) console.error(error);
+}
+async function deleteRequest(id){
+  const { error } = await sb.from('requests').delete().eq('id', id);
+  if(error) console.error(error);
+}
+
+function overlapsDate(req, dateObj){ const s=parse(req.start), e=parse(req.end); return dateObj>=s && dateObj<=e; }
+function countForDate(dateObj){ return data.filter(r=>overlapsDate(r,dateObj)); }
+
+/* --- публичный командный список (только имя + даты) --- */
+function renderTeamList(){
+  const el = document.getElementById('teamList');
+  if(!data.length){ el.innerHTML = '<div class="empty-state">Пока нет ни одной заявки.</div>'; return; }
+  const sorted = [...data].sort((a,b)=>a.start.localeCompare(b.start));
+  el.innerHTML = sorted.map(r=>`
+    <div class="req-item">
+      <div class="who">${escapeHtml(r.name)}</div>
+      <div class="dates">${r.start} → ${r.end} (${daysBetween(r.start,r.end)} дн.)</div>
+    </div>
+  `).join('');
+}
+
+/* --- руководитель --- */
+function renderStats(){
+  const headcount = Number(document.getElementById('headcount').value)||1;
+  const totalReq = data.length;
+  const totalDays = data.reduce((s,r)=>s+daysBetween(r.start,r.end),0);
+  const dateSet = new Set();
+  data.forEach(r=>{ const s=parse(r.start), e=parse(r.end); for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)) dateSet.add(d.toISOString().slice(0,10)); });
+  let peak=0, peakDate=null;
+  dateSet.forEach(ds=>{ const c=countForDate(new Date(ds)); if(c.length>peak){peak=c.length; peakDate=ds;} });
+  const pct = Math.round((peak/headcount)*100);
+  document.getElementById('statRow').innerHTML = `
+    <div class="stat"><div class="num">${totalReq}</div><div class="lbl">Всего заявок</div></div>
+    <div class="stat"><div class="num">${totalDays}</div><div class="lbl">Суммарно дней отпуска</div></div>
+    <div class="stat"><div class="num ${pct>=30?'warn':''}">${peak} чел.</div><div class="lbl">Пик одновременных отпусков${peakDate?' ('+peakDate+')':''}</div></div>
+    <div class="stat"><div class="num ${pct>=30?'warn':''}">${peak?pct+'%':'—'}</div><div class="lbl">от заданной численности</div></div>
+  `;
+}
+const MONTHS=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const DOWS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+function renderCalendar(){
+  document.getElementById('monthLabel').textContent = `${MONTHS[calMonth]} ${calYear}`;
+  document.getElementById('dowRow').innerHTML = DOWS.map(d=>`<div class="dow">${d}</div>`).join('');
+  const first = new Date(calYear, calMonth, 1);
+  let startOffset = first.getDay(); startOffset = startOffset===0?6:startOffset-1;
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const headcount = Number(document.getElementById('headcount').value)||1;
+  let html='';
+  for(let i=0;i<startOffset;i++) html += '<div class="day empty"></div>';
+  for(let d=1; d<=daysInMonth; d++){
+    const dateObj = new Date(calYear, calMonth, d);
+    const list = countForDate(dateObj);
+    const n = list.length, pct = n/headcount;
+    let bg='var(--bg)', barColor='var(--line)';
+    if(n>0 && pct<0.05){ bg='var(--teal-light)'; barColor='var(--teal)'; }
+    else if(pct>=0.05 && pct<0.15){ bg='var(--amber-light)'; barColor='var(--amber)'; }
+    else if(pct>=0.15){ bg='var(--red-light)'; barColor='var(--red)'; }
+    const barWidth = Math.min(100, n*100/Math.max(1,headcount*0.3));
+    const dstr = dateObj.toISOString().slice(0,10);
+    const isSel = selectedDate===dstr;
+    html += `<div class="day${isSel?' selected':''}" style="background:${bg}" data-date="${dstr}">
+      <div class="num">${d}</div>
+      <div class="bar" style="background:${barColor}; width:${n?Math.max(20,barWidth)+'%':'0%'}"></div>
+      <div class="count">${n||''}</div></div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+  document.querySelectorAll('.day[data-date]').forEach(el=>{
+    el.addEventListener('click', ()=>{ selectedDate = el.getAttribute('data-date'); renderCalendar(); showDayDetail(selectedDate); });
+  });
+}
+function showDayDetail(dateStr){
+  const list = countForDate(parse(dateStr));
+  const panel = document.getElementById('dayDetail');
+  if(!list.length){ panel.innerHTML = `<b>${dateStr}</b>: пожеланий нет.`; return; }
+  panel.innerHTML = `<b>${dateStr}</b> — хотят в отпуск (${list.length}):<br>` + list.map(r=>`${escapeHtml(r.name)}${r.dept?' · '+escapeHtml(r.dept):''}`).join('<br>');
+}
+function renderMonthBars(){
+  const totals = new Array(12).fill(0);
+  data.forEach(r=>{ const s=parse(r.start), e=parse(r.end); for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)) if(d.getFullYear()===calYear) totals[d.getMonth()]++; });
+  const max = Math.max(1,...totals);
+  document.getElementById('monthBars').innerHTML = totals.map((t,i)=>`
+    <div class="mb"><div class="fill" style="height:${Math.max(3,t/max*80)}px; background:${i===calMonth?'var(--ink)':'var(--teal)'}"></div><div class="mlbl">${MONTHS[i].slice(0,3)}</div></div>`).join('');
+}
+function renderTable(){
+  const body = document.getElementById('mgrTable');
+  if(!data.length){ body.innerHTML = '<tr><td colspan="7" style="color:var(--ink-soft)">Пока нет заявок</td></tr>'; return; }
+  const sorted = [...data].sort((a,b)=>a.start.localeCompare(b.start));
+  body.innerHTML = sorted.map(r=>`
+    <tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.dept||'—')}</td><td>${r.start}</td><td>${r.end}</td><td>${daysBetween(r.start,r.end)}</td><td>${escapeHtml(r.note||'')}</td>
+    <td><button data-id="${r.id}" class="delBtn2" style="background:none;border:none;color:var(--red);cursor:pointer;">Удалить</button></td></tr>`).join('');
+  body.querySelectorAll('.delBtn2').forEach(b=>b.addEventListener('click', async(e)=>{
+    await deleteRequest(e.target.getAttribute('data-id'));
+    await refresh();
+  }));
+}
+
+async function refresh(){
+  await loadData();
+  renderTeamList();
+  if(document.getElementById('mgrContent').style.display!=='none'){
+    renderStats(); renderCalendar(); renderMonthBars(); renderTable();
+    if(selectedDate) showDayDetail(selectedDate);
+  }
+}
+
+/* --- переключение вкладок --- */
+function showTab(tab){
+  document.getElementById('viewForm').style.display = tab==='form'?'block':'none';
+  document.getElementById('viewTeam').style.display = tab==='team'?'block':'none';
+  document.getElementById('viewMgr').style.display = tab==='mgr'?'block':'none';
+  document.getElementById('btnForm').classList.toggle('active', tab==='form');
+  document.getElementById('btnTeam').classList.toggle('active', tab==='team');
+  document.getElementById('btnMgr').classList.toggle('active', tab==='mgr');
+}
+document.getElementById('btnForm').addEventListener('click', ()=>showTab('form'));
+document.getElementById('btnTeam').addEventListener('click', ()=>showTab('team'));
+document.getElementById('btnMgr').addEventListener('click', ()=>showTab('mgr'));
+
+document.getElementById('mgrEnter').addEventListener('click', async ()=>{
+  const val = document.getElementById('mgrPwd').value;
+  if(val === MANAGER_PASSWORD){
+    document.getElementById('mgrGate').style.display='none';
+    document.getElementById('mgrContent').style.display='block';
+    await refresh();
+  } else {
+    document.getElementById('mgrMsg').style.color='var(--red)';
+    document.getElementById('mgrMsg').textContent='Неверный пароль.';
+  }
+});
+
+document.getElementById('submitReq').addEventListener('click', async ()=>{
+  const name = document.getElementById('fName').value.trim();
+  const dept = document.getElementById('fDept').value.trim();
+  const start = document.getElementById('fStart').value;
+  const end = document.getElementById('fEnd').value;
+  const note = document.getElementById('fNote').value.trim();
+  const msg = document.getElementById('submitMsg');
+  if(!name || !start || !end){ msg.style.color='var(--red)'; msg.textContent='Заполните ФИО и обе даты.'; return; }
+  if(parse(end) < parse(start)){ msg.style.color='var(--red)'; msg.textContent='Дата окончания раньше даты начала.'; return; }
+  await insertRequest({ id:uid(), name, dept, start, end, note });
+  msg.style.color='var(--teal)'; msg.textContent='Пожелание отправлено!';
+  document.getElementById('fName').value=''; document.getElementById('fDept').value='';
+  document.getElementById('fStart').value=''; document.getElementById('fEnd').value=''; document.getElementById('fNote').value='';
+  await refresh();
+});
+
+document.getElementById('prevMonth').addEventListener('click', ()=>{ calMonth--; if(calMonth<0){calMonth=11; calYear--;} renderCalendar(); renderMonthBars(); });
+document.getElementById('nextMonth').addEventListener('click', ()=>{ calMonth++; if(calMonth>11){calMonth=0; calYear++;} renderCalendar(); renderMonthBars(); });
+document.getElementById('headcount').addEventListener('input', ()=>{ renderStats(); renderCalendar(); });
+document.getElementById('clearAll').addEventListener('click', async ()=>{
+  if(!confirm('Удалить все заявки безвозвратно?')) return;
+  for(const r of data){ await deleteRequest(r.id); }
+  await refresh();
+});
+
+(async function init(){ await refresh(); })();
+</script>
+</body>
+</html>
